@@ -1,6 +1,6 @@
 // Configuração do Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyA-NWBdLBUWErBgqhRFBrfXtHDZhTt7qLA",
+  apiKey: "Secret_var",
   authDomain: "abordagem-digital.firebaseapp.com",
   projectId: "abordagem-digital",
   storageBucket: "abordagem-digital.appspot.com",
