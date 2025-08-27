@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Doc2text - Principal</title>
+
+    <meta name="theme-color" content="#003366" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192x192.png" />
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
+    />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">
+          <i class="bi bi-shield-check"></i>
+          Doc2text
+        </a>
+        <div class="d-flex align-items-center text-white">
+          <span id="userInfo" class="me-3 small"></span>
+          <button id="logoutBtn" class="btn btn-outline-light btn-sm">
+            <i class="bi bi-box-arrow-right"></i> Sair
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container mt-4">
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h5 class="card-title text-center">
+            <i class="bi bi-file-earmark-text me-2"></i>1. Análise do Documento
+          </h5>
+          <div class="mb-4 text-center">
+            <div class="btn-group mb-3 shadow-sm">
+              <button id="cameraBtn" class="btn btn-primary">
+                <i class="bi bi-camera"></i> Tirar Foto do Documento
+              </button>
+
+              <button id="galleryBtn" class="btn btn-secondary">
+                <i class="bi bi-images"></i> Galeria
+              </button>
+            </div>
+            <input type="file" id="fileInput" accept="image/*" class="d-none" />
+          </div>
+
+          <div id="previewSection" class="text-center mb-3 d-none">
+            <img
+              id="preview"
+              alt="Pré-visualização do Documento"
+              class="img-fluid rounded border shadow-sm"
+            />
+          </div>
+
+          <div id="fileSizeAlert" class="alert d-none" role="alert">
+            <span id="sizeWarningText"></span>
+          </div>
+
+          <div
+            id="compressProgress"
+            class="progress mb-3 d-none"
+            style="height: 10px"
+          >
+            <div
+              id="progressBar"
+              class="progress-bar progress-bar-striped progress-bar-animated"
+            ></div>
+          </div>
+
+          <div class="text-center mb-2">
+            <button
+              id="processBtn"
+              class="btn btn-primary btn-lg shadow-sm"
+              disabled
+            >
+              <i class="bi bi-gear"></i> Processar Documento
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h5 class="card-title text-center">
+            <i class="bi bi-pencil-square me-2"></i>2. Dados da Abordagem
+          </h5>
+          <div class="form-floating mb-3">
+            <textarea
+              id="fullText"
+              class="form-control"
+              placeholder="Texto extraído ou cole aqui seu texto..."
+              style="height: 150px"
+            ></textarea>
+            <label for="fullText">Texto Extraído do Documento</label>
+
+            <div class="mt-2 text-center">
+              <button id="processTextBtn" class="btn btn-primary d-none">
+                <i class="bi bi-gear"></i> Processar Texto Colado
+              </button>
+            </div>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="abordado" class="form-label">Abordado:</label>
+
+              <div class="input-group">
+                <input id="abordado" class="form-control" />
+                <button
+                  class="btn btn-outline-secondary edit-btn"
+                  type="button"
+                  data-field="abordado"
+                >
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button
+                  class="btn btn-info text-white sinesp-btn"
+                  type="button"
+                  id="searchBnmpBtn"
+                >
+                  <i class="bi bi-search"></i> BNMP
+                </button>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <label for="genitora" class="form-label">Genitora:</label>
+              <div class="input-group">
+                <input id="genitora" class="form-control" />
+                <button
+                  class="btn btn-outline-secondary edit-btn"
+                  type="button"
+                  data-field="genitora"
+                >
+                  <i class="bi bi-pencil"></i>
+                </button>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label for="apelido" class="form-label">Apelido:</label>
+              <div class="d-flex gap-4 mb-2">
+                <div class="form-check">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="inserirApelido"
+                  />
+                  <label class="form-check-label" for="inserirApelido"
+                    >Inserir apelido</label
+                  >
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="naoAplicaApelido"
+                  />
+                  <label class="form-check-label" for="naoAplicaApelido"
+                    >Não se aplica</label
+                  >
+                </div>
+              </div>
+              <div class="input-group">
+                <input id="apelido" class="form-control" disabled />
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label for="dn" class="form-label">Data de Nasc.:</label>
+              <div class="input-group">
+                <input id="dn" class="form-control" />
+                <button
+                  class="btn btn-outline-secondary edit-btn"
+                  type="button"
+                  data-field="dn"
+                >
+                  <i class="bi bi-pencil"></i>
+                </button>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label for="cpf" class="form-label">CPF:</label>
+              <div class="input-group">
+                <input id="cpf" class="form-control" />
+
+                <button
+                  class="btn btn-outline-secondary edit-btn"
+                  type="button"
+                  data-field="cpf"
+                >
+                  <i class="bi bi-pencil"></i>
+                </button>
+              </div>
+            </div>
+            <div class="col-12">
+              <label for="antecedentes" class="form-label">Antecedentes:</label>
+              <input id="antecedentes" class="form-control" />
+            </div>
+
+            <div class="col-12">
+              <label for="endereco" class="form-label">Endereço:</label>
+              <input id="endereco" class="form-control" />
+            </div>
+            <div class="col-md-6">
+              <label for="local" class="form-label">Local da abordagem:</label>
+              <input id="local" class="form-control" />
+            </div>
+            <div class="col-md-6">
+              <label for="equipe" class="form-label">Equipe:</label>
+
+              <input id="equipe" class="form-control" />
+            </div>
+          </div>
+          <div class="observation-section">
+            <h6 class="observation-title">Observações Adicionais</h6>
+            <div class="row">
+              <div class="col-md-6 mb-3 mb-md-0">
+                <label class="form-label d-block">Possui tornozeleira?</label>
+                <div class="d-flex gap-4">
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="tornozeleiraCheck"
+                    />
+                    <label class="form-check-label" for="tornozeleiraCheck"
+                      >Sim</label
+                    >
+                  </div>
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="naoAplicaTornozeleira"
+                    />
+                    <label class="form-check-label" for="naoAplicaTornozeleira"
+                      >Não se aplica</label
+                    >
+                  </div>
+                </div>
+                <div id="tornozeleiraField" class="conditional-field mt-2">
+                  <label for="tornozeleiraNumero" class="form-label"
+                    >Número:</label
+                  >
+                  <input
+                    type="text"
+                    id="tornozeleiraNumero"
+                    class="form-control"
+                  />
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label d-block">Está de veículo?</label>
+
+                <div class="d-flex gap-4">
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="veiculoCheck"
+                    />
+                    <label class="form-check-label" for="veiculoCheck"
+                      >Sim</label
+                    >
+                  </div>
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="naoAplicaVeiculo"
+                    />
+                    <label class="form-check-label" for="naoAplicaVeiculo"
+                      >Não se aplica</label
+                    >
+                  </div>
+                </div>
+                <div id="veiculoFields" class="conditional-field mt-2">
+                  <div class="row g-2">
+                    <div class="col-12">
+                      <label for="veiculoPlaca" class="form-label"
+                        >Placa:</label
+                      >
+
+                      <div class="input-group">
+                        <input
+                          type="text"
+                          id="veiculoPlaca"
+                          class="form-control"
+                        />
+                        <button
+                          class="btn btn-outline-secondary edit-btn"
+                          type="button"
+                          data-field="veiculoPlaca"
+                        >
+                          <i class="bi bi-pencil"></i>
+                        </button>
+                        <button
+                          class="btn btn-info text-white sinesp-btn"
+                          type="button"
+                          id="searchPlateBtn"
+                        >
+                          <i class="bi bi-search"></i> Consultar
+                        </button>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <label for="veiculoCor" class="form-label">Cor:</label>
+                      <input type="text" id="veiculoCor" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                      <label for="veiculoModelo" class="form-label"
+                        >Modelo:</label
+                      >
+                      <input
+                        type="text"
+                        id="veiculoModelo"
+                        class="form-control"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h5 class="card-title text-center">
+            <i class="bi bi-person-bounding-box me-2"></i>3. Foto do Abordado
+          </h5>
+          <div class="alert alert-warning small text-center">
+            <i class="bi bi-exclamation-triangle-fill"></i> Para enviar a foto
+            no WhatsApp, ela é obrigatória.
+          </div>
+          <div class="text-center mb-3">
+            <div class="btn-group shadow-sm">
+              <button id="cameraBtnAbordado" class="btn btn-primary">
+                <i class="bi bi-camera"></i> Tirar Foto
+              </button>
+              <button id="galleryBtnAbordado" class="btn btn-secondary">
+                <i class="bi bi-images"></i> Galeria
+              </button>
+            </div>
+            <input
+              type="file"
+              id="fileInputAbordado"
+              accept="image/*"
+              class="d-none"
+            />
+          </div>
+          <div id="previewSectionAbordado" class="text-center mb-3 d-none">
+            <img
+              id="previewAbordado"
+              alt="Pré-visualização da foto do abordado"
+              class="img-fluid rounded border shadow-sm"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-body text-center">
+          <h5 class="card-title"><i class="bi bi-send me-2"></i>4. Ações</h5>
+          <div class="actions-container">
+            <div class="main-actions">
+              <div class="btn-group shadow-sm" role="group">
+                <button id="copyBtn" class="btn btn-success" disabled>
+                  <i class="bi bi-clipboard-check me-2"></i>Copiar Dados
+                </button>
+
+                <button
+                  id="whatsappBtn"
+                  class="btn whatsapp-btn text-white"
+                  disabled
+                >
+                  <i class="bi bi-whatsapp me-2"></i>Enviar WhatsApp
+                </button>
+              </div>
+            </div>
+            <div class="reset-actions">
+              <button id="resetAntecedentes" class="btn">
+                <i class="bi bi-arrow-counterclockwise"></i> Resetar
+                Antecedentes
+              </button>
+              <button id="resetLocal" class="btn">
+                <i class="bi bi-arrow-counterclockwise"></i> Resetar Local
+              </button>
+              <button id="resetEquipe" class="btn">
+                <i class="bi bi-arrow-counterclockwise"></i> Resetar Equipe
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="text-center mt-4 mb-4 text-muted small">
+        Desenvolvido por CB Antônio Rafael 🤓| Versão 1.2
+      </footer>
+    </main>
+
+    <div class="modal fade" id="correctionModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              Corrigir Campo: <span id="modalFieldName"></span>
+            </h5>
+
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">Texto OCR Original:</label>
+              <div
+                id="ocrTextContent"
+                class="border p-2 bg-light rounded"
+                style="max-height: 150px; overflow-y: auto; font-size: 0.9rem"
+              ></div>
+            </div>
+            <div class="alert alert-light extraction-hint mb-3">
+              <strong>Dica de extração:</strong>
+              <div id="extractionHintContent"></div>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Extrair após (opcional):</label>
+                <input
+                  type="text"
+                  id="startExpression"
+                  class="form-control"
+                  placeholder="Termo/palavra de início"
+                />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Extrair antes de (opcional):</label>
+                <input
+                  type="text"
+                  id="endExpression"
+                  class="form-control"
+                  placeholder="Termo/palavra de fim"
+                />
+              </div>
+            </div>
+
+            <div class="mb-3 mt-3">
+              <label class="form-label">Resultado da Extração:</label>
+              <input
+                type="text"
+                id="resultPreview"
+                class="form-control"
+                readonly
+              />
+            </div>
+            <hr />
+            <div class="mb-3">
+              <label class="form-label">Ou insira o valor manualmente:</label>
+              <input
+                type="text"
+                id="manualInput"
+                class="form-control"
+                placeholder="Digite o valor correto aqui"
+              />
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancelar
+            </button>
+
+            <button type="button" class="btn btn-primary" id="applyCorrection">
+              Aplicar Correção
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="whatsappInstructionsModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="bi bi-whatsapp me-2"></i>Como Enviar no WhatsApp
+            </h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              O texto do relatório será
+              <strong>copiado automaticamente</strong>.
+            </p>
+            <ol class="list-group list-group-numbered">
+              <li class="list-group-item">
+                <strong>Passo 1:</strong> Escolha o contato ou grupo no
+                WhatsApp.
+              </li>
+              <li class="list-group-item">
+                <strong>Passo 2:</strong> Na tela de envio,
+                <strong>toque e segure</strong> no campo de texto e escolha
+                <strong>"Colar"</strong>.
+              </li>
+              <li class="list-group-item">
+                <strong>Passo 3:</strong> Com a foto e o texto prontos, é só
+                enviar!
+              </li>
+            </ol>
+            <div class="form-check mt-3">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                id="dontShowAgain"
+              />
+              <label class="form-check-label" for="dontShowAgain"
+                >Não mostrar esta mensagem novamente.</label
+              >
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-primary"
+              id="continueToWhatsapp"
+            >
+              Entendi, Continuar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="bnmpInfoModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Consulta BNMP</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              Para consultar mandados de prisão (BNMP), é necessário ter o
+              aplicativo <strong>Sinesp Cidadão</strong> instalado.
+            </p>
+            <p>
+              Clique em "Continuar" para tentar abrir o app. Se não o tiver,
+              baixe-o na <span class="app-store-name">App Store</span>.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancelar
+            </button>
+            <a
+              id="bnmpContinueLink"
+              href="#"
+              class="btn btn-primary"
+              role="button"
+              >Continuar</a
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="plateInfoModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Consulta de Veículo</h5>
+
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              Para consultar a situação de roubo/furto do veículo, é necessário
+              ter o aplicativo <strong>Sinesp Cidadão</strong> instalado.
+            </p>
+            <p>
+              Clique em "Continuar" para tentar abrir o app. Se não o tiver,
+              baixe-o na <span class="app-store-name">App Store</span>.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancelar
+            </button>
+            <a
+              id="plateContinueLink"
+              href="#"
+              class="btn btn-primary"
+              role="button"
+              >Continuar</a
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+      <div
+        id="feedbackToast"
+        class="toast"
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+      >
+        <div class="d-flex">
+          <div class="toast-body"></div>
+          <button
+            type="button"
+            class="btn-close btn-close-white me-2 m-auto"
+            data-bs-dismiss="toast"
+          ></button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-auth-compat.js"></script>
+    <script src="app.js"></script>
+
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("./sw.js")
+            .then((registration) => {
+              console.log(
+                "Service Worker registrado com sucesso:",
+                registration.scope
+              );
+            })
+            .catch((error) => {
+              console.log("Falha no registro do Service Worker:", error);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>
