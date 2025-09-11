@@ -541,12 +541,14 @@ document.addEventListener("DOMContentLoaded", function () {
       `*Equipe:* ${getVal("equipe")}\n` +
       `*OBSERVAÇÕES:*\n`;
     report += elements.tornozeleiraCheck.checked
-      ? `- Tornozeleira: Sim. Número: ${getVal("tornozeleiraNumero")}\n`
+      ? `- Tornozeleira: Sim. *Número:* ${getVal("tornozeleiraNumero")}\n`
       : `- Tornozeleira: Não se aplica.\n`;
     report += elements.veiculoCheck.checked
-      ? `- Veículo: Sim.\n  Placa: ${getVal("veiculoPlaca")}\n  Cor: ${getVal(
-          "veiculoCor"
-        )}\n  Modelo: ${getVal("veiculoModelo")}\n`
+      ? `- Veículo: Sim.\n  *Placa:* ${getVal(
+          "veiculoPlaca"
+        )}\n  *Cor:* ${getVal("veiculoCor")}\n  *Modelo:* ${getVal(
+          "veiculoModelo"
+        )}\n`
       : `- Veículo: Não se aplica.\n`;
     return report.trim();
   }
