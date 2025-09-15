@@ -636,23 +636,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Determina o nome da mãe baseado nos nomes encontrados
         if (possibleNames.length >= 2) {
-          // Geralmente o pai vem primeiro, a mãe depois
-          mae = possibleNames[1]; // Segunda linha como mãe
+          // Sempre pega o segundo nome como mãe
+          mae = possibleNames[1];
 
-          // Se tiver mais de 2 nomes, pode ser que a mãe seja a combinação de linhas adicionais
+          // Se houver mais nomes, verifica se há continuação do nome da mãe
           if (possibleNames.length > 2) {
-            // Verifica se a 3ª linha parece continuação do nome da mãe
-            // (geralmente não tem o mesmo início que o nome do pai)
             const paiParts = possibleNames[0].split(/\s+/);
             const potencialMaeParts = possibleNames[2].split(/\s+/);
 
             if (paiParts[0] !== potencialMaeParts[0]) {
-              // Se o primeiro nome for diferente, provavelmente é continuação do nome da mãe
               mae = normalizeSpaces(possibleNames[1] + " " + possibleNames[2]);
             }
           }
-        } else if (possibleNames.length === 1) {
-          mae = possibleNames[0]; // Se só encontrou um nome, assume que é da mãe
         }
       }
 
@@ -932,6 +927,25 @@ document.addEventListener("DOMContentLoaded", function () {
         ""
       );
 
+    // Fallbacks antes de preencher o DOM
+    if (!nome) {
+      nome = "Use a Função de correção ✏️";
+    }
+    if (!naturalidade) {
+      naturalidade = "Use a Função de correção ✏️  | Ou digite";
+    }
+    if (!mae) {
+      mae = "Use a Função de correção ✏️";
+    }
+    if (!cpf) {
+      cpf = "Use a Função de correção ✏️";
+    }
+    if (!dn) {
+      dn = "Use a Função de correção ✏️";
+    }
+    if (!placa) {
+      placa = "Use a Função ✏️| Ou digite";
+    }
     // Preenche os campos no DOM
     elements.abordado.value = nome || "";
     elements.naturalidade.value = naturalidade || "";
