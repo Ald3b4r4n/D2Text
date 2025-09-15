@@ -6,7 +6,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const MAX_FILE_SIZE_KB = 1024;
   const MAX_DIMENSION = 1200;
   const OCR_API_KEY = "K82112819888957";
-  const OCR_TIMEOUT = 30000;
+  const OCR_TIMEOUT = 10000;
+  const ocrTimeoutModal = new bootstrap.Modal(
+    document.getElementById("ocrTimeoutModal")
+  );
 
   // =============================================
   // ESTADO DA APLICAÇÃO
@@ -379,17 +382,35 @@ document.addEventListener("DOMContentLoaded", function () {
     formData.append("base64Image", `data:image/jpeg;base64,${base64Image}`);
     formData.append("language", "por");
     formData.append("OCREngine", "5");
-    const response = await fetch("https://api.ocr.space/parse/image", {
-      method: "POST",
-      headers: { apikey: OCR_API_KEY },
-      body: formData,
-    });
-    if (!response.ok) throw new Error(`Erro de rede: ${response.status}`);
-    const data = await response.json();
-    if (data.IsErroredOnProcessing) throw new Error(data.ErrorMessage[0]);
-    if (!data.ParsedResults?.length)
-      throw new Error("Nenhum texto reconhecido");
-    return data.ParsedResults[0].ParsedText || "";
+
+    let timeoutId;
+
+    try {
+      // Inicia o timeout para mostrar o modal após 10 segundos
+      timeoutId = setTimeout(() => {
+        elements.ocrTimeoutModal.show();
+      }, 10000);
+
+      const response = await fetch("https://api.ocr.space/parse/image", {
+        method: "POST",
+        headers: { apikey: OCR_API_KEY },
+        body: formData,
+      });
+
+      // Se a resposta chegou a tempo, cancela o timeout
+      clearTimeout(timeoutId);
+
+      if (!response.ok) throw new Error(`Erro de rede: ${response.status}`);
+      const data = await response.json();
+      if (data.IsErroredOnProcessing) throw new Error(data.ErrorMessage[0]);
+      if (!data.ParsedResults?.length)
+        throw new Error("Nenhum texto reconhecido");
+
+      return data.ParsedResults[0].ParsedText || "";
+    } catch (error) {
+      clearTimeout(timeoutId); // Garante que o timeout não dispare depois do erro
+      throw error;
+    }
   }
 
   async function processImageFile(file) {
@@ -420,11 +441,316 @@ document.addEventListener("DOMContentLoaded", function () {
   // =============================================
 
   function extractAndFillFields(text) {
+    // Helpers
+    const toLines = (t) =>
+      t
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+    const normalizeSpaces = (s) => s.replace(/\s+/g, " ").trim();
+
+    const UPPER = (s) => s.toUpperCase();
+
+    const isAllCaps = (s) => /^[A-ZÀ-Ü\s./-]+$/.test(s);
+
+    const stopWordsMae = [
+      "PERMISSÃO",
+      "ACC",
+      "REGISTRO",
+      "VALIDADE",
+      "CATEGORIA",
+      "RENAVAM",
+      "PLACA",
+      "HABILITAÇÃO",
+      "NACIONAL",
+      "EXERCÍCIO",
+      "ASSINATURA",
+      "DETRAN",
+      "MARCA",
+      "MODELO",
+      "VERSÃO",
+      "CHASSI",
+      "COMBUSTÍVEL",
+      "COR",
+      "CÓDIGO",
+      "ESPÉCIE",
+      "TIPO",
+      "LOCAL",
+    ];
+
+    const looksLikeName = (s) => {
+      if (!s) return false;
+      if (!isAllCaps(s)) return false; // OCR aqui está em caps
+      if (/\d/.test(s)) return false; // nomes não têm dígitos
+      const parts = s.split(/\s+/).filter(Boolean);
+      if (parts.length < 2) return false; // pelo menos 2 termos
+      if (stopWordsMae.some((w) => s.includes(w))) return false;
+      // evita capturar rótulos curtos
+      if (s.length < 5) return false;
+      return true;
+    };
+
+    // Pré-processamento em maiúsculas e linhas
+    const rawLines = toLines(text);
+    const linhas = rawLines.map((l) => UPPER(l));
+
+    // Campos principais
+    let nome = "",
+      mae = "",
+      cpf = "",
+      dn = "",
+      placa = "";
+    let emissao = "",
+      validade = "",
+      categoria = "";
+
+    // Dados de veículo
+    let modelo = "",
+      cor = "",
+      combustivel = "",
+      chassi = "";
+    let anoModelo = "",
+      anoFabricacao = "",
+      nomeProprietario = "",
+      cpfProprietario = "",
+      emissaoVeiculo = "";
+
+    // Passo 1: Heurística linha a linha (com proteções contra sobrescrita)
+    for (let i = 0; i < linhas.length; i++) {
+      const linha = linhas[i];
+
+      // NOME (não sobrescrever, e evitar pegar rótulos/linhas ruins)
+      if ((linha.includes("NOME") || linha.includes("NAME")) && !nome) {
+        const candidato1 = linhas[i + 1];
+        const candidato2 = linhas[i + 2];
+
+        const possiveis = [candidato1, candidato2];
+
+        for (const candidato of possiveis) {
+          if (
+            candidato &&
+            candidato.split(" ").length >= 2 &&
+            !candidato.includes("HABILITAÇÃO") &&
+            !/\d/.test(candidato)
+          ) {
+            nome = normalizeSpaces(candidato);
+            break;
+          }
+        }
+      }
+
+      // Nome da mãe (reconstrói nome quebrado e para quando muda de seção)
+      if (
+        linha.includes("FILIA") ||
+        linha.includes("FIL") ||
+        linha.includes("- FILAÇÃO") ||
+        linha.includes("FILIACAO") ||
+        linha.includes("FILIAÇÃO") ||
+        linha.includes("GENITORA") ||
+        linha.includes("MOTHER") ||
+        linha.includes("FLAÇÃO") ||
+        linha.includes("mae") ||
+        linha.includes("MAE") ||
+        linha.includes("mãe") ||
+        linha.includes("MÃE")
+      ) {
+        const nomes = [];
+        for (let j = 1; j <= 8; j++) {
+          const linhaSeguinte = linhas[i + j]?.trim();
+          if (!linhaSeguinte) continue;
+
+          // se a linha é claramente de outra seção, pare
+          if (stopWordsMae.some((w) => linhaSeguinte.includes(w))) break;
+
+          // ignorar linhas ruidosas: siglas curtas, com underscore, hífens soltos etc.
+          if (linhaSeguinte.length <= 2) continue;
+          if (/[*_]/.test(linhaSeguinte)) continue;
+
+          // aceita nomes em múltiplas linhas (inclusive pai em 1-2 linhas)
+          if (!/\d/.test(linhaSeguinte) && isAllCaps(linhaSeguinte)) {
+            nomes.push(normalizeSpaces(linhaSeguinte));
+            // Heurística: se já juntou 4 linhas de nomes, é suficiente
+            if (nomes.length >= 4) break;
+          } else {
+            break;
+          }
+        }
+
+        // Montagem: geralmente pai ocupa 1-2 linhas, mãe vem depois
+        if (nomes.length >= 3) {
+          // Se pai está em 2 linhas, a mãe começa da 3ª
+          mae = normalizeSpaces(nomes.slice(2).join(" "));
+        } else if (nomes.length >= 2) {
+          // pai 1 linha, mãe 2ª linha (ou 2 linhas do pai e faltou mãe)
+          mae = normalizeSpaces(nomes[1]);
+        }
+      }
+
+      // CPF com marcador
+      if (!cpf && (linha.includes("CPF") || linha.includes("TAX ID"))) {
+        const candidato = linhas[i + 1]?.replace(/\D/g, "");
+        if (candidato?.length === 11) {
+          cpf = `${candidato.slice(0, 3)}.${candidato.slice(
+            3,
+            6
+          )}.${candidato.slice(6, 9)}-${candidato.slice(9)}`;
+        }
+      }
+
+      // CPF genérico (sem marcador)
+      if (!cpf) {
+        const matchCpf = linha.match(
+          /\b\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2}\b/
+        );
+        if (matchCpf) {
+          const digits = matchCpf[0].replace(/\D/g, "");
+          if (digits.length === 11) {
+            cpf = `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(
+              6,
+              9
+            )}-${digits.slice(9)}`;
+          }
+        }
+      }
+
+      // Data de nascimento (janela ao redor do marcador)
+      if (!dn && linha.includes("NASC")) {
+        const janela = linhas.slice(i, i + 4).join(" ");
+        const match = janela.match(/\b\d{2}\/\d{2}\/\d{4}\b/);
+        if (match) dn = match[0];
+      }
+
+      // Data de emissão (CNH)
+      if (!emissao && linha.includes("EMISS")) {
+        const prox = linhas[i + 1];
+        if (prox && /^\d{2}\/\d{2}\/\d{4}$/.test(prox)) {
+          emissao = prox;
+        } else {
+          const m = linha.match(/\b\d{2}\/\d{2}\/\d{4}\b/);
+          if (m) emissao = m[0];
+        }
+      }
+
+      // Validade
+      if (!validade && linha.includes("VALIDADE")) {
+        const m = linha.match(/\b\d{2}\/\d{2}\/\d{4}\b/);
+        if (m) validade = m[0];
+        const prox = linhas[i + 1];
+        if (!validade && prox && /^\d{2}\/\d{2}\/\d{4}$/.test(prox))
+          validade = prox;
+      }
+
+      // Categoria de habilitação
+      if (!categoria && linha.includes("CAT") && linha.includes("HAB")) {
+        const partes = linha.split(/\s+/);
+        const cat = partes.find((p) => /^[A-Z]{1,2}$/.test(p));
+        if (cat) categoria = cat;
+        if (!categoria && linhas[i + 1] && /^[A-Z]{1,2}$/.test(linhas[i + 1])) {
+          categoria = linhas[i + 1];
+        }
+      }
+
+      // Placa (ABCD Mercosul ou antigo)
+      if (!placa) {
+        const m = linha
+          .replace(/\s+/g, "")
+          .match(/\b[A-Z]{3}\d{4}\b|\b[A-Z]{3}\d[A-Z]\d{2}\b/);
+        if (m) placa = m[0];
+      }
+
+      // Marca / Modelo (limpa caracteres estranhos)
+      if (
+        !modelo &&
+        (linha.includes("MARCA") ||
+          linha.includes("MODELO") ||
+          linha.includes("VERS"))
+      ) {
+        const prox = linhas[i + 1];
+        if (prox && prox.length > 3) {
+          modelo = normalizeSpaces(prox.replace(/[^\w\s/.\-]/g, ""));
+        }
+      }
+
+      // Cor (pode vir como COR PREDOMINANTE)
+      if (!cor && linha.includes("COR")) {
+        const prox = linhas[i + 1];
+        if (prox && /^[A-ZÀ-Ü\s]{3,}$/.test(prox) && !prox.includes("*")) {
+          cor = normalizeSpaces(prox);
+        }
+      }
+
+      // Combustível
+      if (!combustivel && linha.includes("COMBUST")) {
+        const prox = linhas[i + 1];
+        if (prox) combustivel = normalizeSpaces(prox);
+      }
+
+      // Chassi
+      if (!chassi && linha.includes("CHASS")) {
+        const prox = linhas[i + 1]?.replace(/\s+/g, "");
+        const m = prox?.match(/[A-Z0-9]{17}/);
+        if (m) chassi = m[0];
+      }
+
+      // Ano modelo
+      if (
+        !anoModelo &&
+        (linha.includes("ANO MODELO") || linha.includes("ANO NICLELO"))
+      ) {
+        const prox = linhas[i + 1];
+        if (prox) anoModelo = normalizeSpaces(prox);
+      }
+
+      // Ano fabricação
+      if (
+        !anoFabricacao &&
+        (linha.includes("ANO FABRICA") || linha.includes("FABRICAÇÃO"))
+      ) {
+        const prox = linhas[i + 1];
+        if (prox) anoFabricacao = normalizeSpaces(prox);
+      }
+
+      // Nome do proprietário (se aparecer bloco de veículo com NOME)
+      if (!nomeProprietario && linha.includes("NOME") && i > 10) {
+        const prox = linhas[i + 1];
+        if (prox && looksLikeName(prox))
+          nomeProprietario = normalizeSpaces(prox);
+      }
+
+      // CPF do proprietário
+      if (
+        !cpfProprietario &&
+        (linha.includes("CPF") || linha.includes("CNPJ"))
+      ) {
+        const raw = linhas[i + 1]?.replace(/\D/g, "");
+        if (raw?.length === 11) {
+          cpfProprietario = `${raw.slice(0, 3)}.${raw.slice(3, 6)}.${raw.slice(
+            6,
+            9
+          )}-${raw.slice(9)}`;
+        }
+      }
+
+      // Data de emissão do CRLV (heurística)
+      if (
+        !emissaoVeiculo &&
+        (linha.includes("BRASILIA") ||
+          linha.includes("LOCAL") ||
+          linha.includes("DATA"))
+      ) {
+        const prox = linhas[i + 1];
+        const m = prox?.match(/\b\d{2}\/\d{2}\/\d{4}\b/);
+        if (m) emissaoVeiculo = m[0];
+      }
+    }
+
+    // Passo 2: Fallback com regex (completa sem sobrescrever bons valores)
     const findValue = (patterns) => {
       for (const pattern of patterns) {
         const match = text.match(pattern);
         if (match && match.length > 1 && match[1]) {
-          return match[1].replace(/\s+/g, " ").trim();
+          return normalizeSpaces(match[1]);
         }
       }
       return "";
@@ -432,97 +758,122 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const patterns = {
       abordado: [
-        // Primeiro padrão - após a palavra "NOME"
-        /(?:NOME(?: E SOBRENOME)?)[^\n]*\n([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,}){1,})/i,
-
-        // Segundo padrão - nome seguido por data
-        /(?:^|\n)([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,}){1,})\s*\n\s*\d{2}\/\d{2}\/\d{4}/i,
-
-        // Adicionar padrão específico para CNH - linha "NOME E SOBRENOME"
-        /2\s*e\s*1\s*NOME\s*E\s*SOBRENOME\s*\n([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,})+)/i,
+        /(?:NOME(?:\s+E\s+SOBRENOME)?)[^\n]*\n(?:.*\n)?([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,}){1,})/i,
+        /2\s*e\s*1\s*NOME\s*E\s*SOBRENOME\s*\n(?:.*\n)?([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,})+)/i,
       ],
-      dn: [
-        /(?:DATA NASC(?:IMENTO)?)[\s:.-]*(\d{2}\/\d{2}\/\d{4})/i,
-        /\b(\d{2}\/\d{2}\/\d{4})\b/i,
-      ],
+      dn: [/(?:DATA\s+NASC(?:IMENTO)?)[\s:.-]*([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i],
       cpf: [
         /CPF\s*[:\n-]*\s*(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2})/i,
-        /\b(\d{11})\b/,
+        /\b(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2})\b/,
       ],
       veiculoPlaca: [
         /PLACA\s*[:\n-]*\s*([A-Z]{3}[- ]?\d{4})/i,
         /\b([A-Z]{3}\d[A-Z]\d{2})\b/i,
       ],
-      veiculoCor: [/COR PREDOMINANTE\s+([A-ZÁ-Ú]+)/i],
-      veiculoModelo: [/MARCA\/MODELO\/VERSAO\s+([^\n]+)/i],
+      veiculoCor: [/COR(?:\s+PREDOMINANTE)?\s+([A-ZÁ-Ú\s]{3,})/i],
+      veiculoModelo: [
+        /MARCA\s*\/\s*MODELO\s*\/\s*VERS[AÃ]O\s+([^\n]+)/i,
+        /MARCA.*MODELO.*VERS.*\n([^\n]+)/i,
+      ],
+      maeBloco: [/FILIA(?:C|Ç)ÃO[\s:.-]*([\s\S]{10,200})/i],
     };
 
-    const nome = findValue(patterns.abordado);
-    elements.abordado.value = nome.split(" ").length >= 2 ? nome : "";
-    elements.dn.value = findValue(patterns.dn);
+    // Completa nome se vazio
+    if (!nome) {
+      const nomeRx = findValue(patterns.abordado);
+      if (nomeRx && nomeRx.split(" ").length >= 2) nome = UPPER(nomeRx);
+    }
 
-    // CPF: normaliza e formata corretamente
-    let cpfValue = findValue(patterns.cpf).replace(/\D/g, "");
-    if (cpfValue.length === 11) {
-      cpfValue = cpfValue.replace(
-        /(\d{3})(\d{3})(\d{3})(\d{2})/,
-        "$1.$2.$3-$4"
+    // Completa DN se vazio
+    if (!dn) {
+      const dnRx = findValue(patterns.dn);
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(dnRx)) dn = dnRx;
+    }
+
+    // Completa CPF se vazio
+    if (!cpf) {
+      let cpfRx = findValue(patterns.cpf).replace(/\D/g, "");
+      if (cpfRx.length === 11) {
+        cpf = `${cpfRx.slice(0, 3)}.${cpfRx.slice(3, 6)}.${cpfRx.slice(
+          6,
+          9
+        )}-${cpfRx.slice(9)}`;
+      }
+    }
+
+    // Completa mãe se vazio com bloco de FILIAÇÃO
+    if (!mae) {
+      const bloco = findValue(patterns.maeBloco);
+      if (bloco) {
+        const lines = toLines(UPPER(bloco));
+        const valid = [];
+        for (const l of lines) {
+          if (!l) continue;
+          if (stopWordsMae.some((w) => l.includes(w))) break;
+          if (!/\d/.test(l) && isAllCaps(l) && l.length >= 3) {
+            valid.push(normalizeSpaces(l));
+          } else {
+            break;
+          }
+        }
+        if (valid.length >= 3) {
+          mae = normalizeSpaces(valid.slice(2).join(" "));
+        } else if (valid.length >= 2) {
+          mae = normalizeSpaces(valid[1]);
+        }
+      }
+    }
+
+    // Completa veículo
+    if (!placa)
+      placa = UPPER(findValue(patterns.veiculoPlaca)).replace(" ", "");
+    if (!cor) cor = UPPER(findValue(patterns.veiculoCor));
+    if (!modelo)
+      modelo = UPPER(findValue(patterns.veiculoModelo)).replace(
+        /[^\w\s/.\-]/g,
+        ""
       );
-    } else {
-      cpfValue = "";
+
+    // Preenche os campos no DOM
+    elements.abordado.value = nome || "";
+    elements.genitora.value = mae || "";
+    elements.cpf.value = cpf || "";
+    elements.dn.value = dn || "";
+    elements.veiculoPlaca.value = placa || "";
+
+    if (elements.emissao) elements.emissao.value = emissao || "";
+    if (elements.validade) elements.validade.value = validade || "";
+    if (elements.categoria) elements.categoria.value = categoria || "";
+
+    // Campos adicionais de veículo
+    if (elements.veiculoModelo) elements.veiculoModelo.value = modelo || "";
+    if (elements.veiculoCor) elements.veiculoCor.value = cor || "";
+    if (elements.veiculoCombustivel)
+      elements.veiculoCombustivel.value = combustivel || "";
+    if (elements.veiculoChassi) elements.veiculoChassi.value = chassi || "";
+    if (elements.veiculoAnoModelo)
+      elements.veiculoAnoModelo.value = anoModelo || "";
+    if (elements.veiculoAnoFabricacao)
+      elements.veiculoAnoFabricacao.value = anoFabricacao || "";
+    if (elements.veiculoProprietario)
+      elements.veiculoProprietario.value = nomeProprietario || "";
+    if (elements.veiculoCpfProprietario)
+      elements.veiculoCpfProprietario.value = cpfProprietario || "";
+    if (elements.veiculoEmissao)
+      elements.veiculoEmissao.value = emissaoVeiculo || "";
+
+    // Ativa campos de veículo se placa ou modelo forem encontrados
+    if (placa || modelo) {
+      const vc = document.getElementById("veiculoCheck");
+      const na = document.getElementById("naoAplicaVeiculo");
+      const vf = document.getElementById("veiculoFields");
+      if (vc) vc.checked = true;
+      if (na) na.checked = false;
+      if (vf) vf.style.display = "block";
     }
-    elements.cpf.value = cpfValue;
 
-    // Genitora (mãe): extrai corretamente mesmo com quebra de linha
-    // Genitora (mãe): extrai corretamente mesmo com quebra de linha
-    let genitoraValue = "";
-    const filiacaoMatch = text.match(
-      /FILIA(?:C|Ç)ÃO\s*[:\n-]*([\s\S]{10,150})/i
-    );
-    if (filiacaoMatch && filiacaoMatch[1]) {
-      const stopWords = [
-        "PERMISSÃO",
-        "CAT.",
-        "N°",
-        "VALIDADE",
-        "HABILITAÇÃO",
-        "BRANCA",
-      ];
-      const lines = filiacaoMatch[1]
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => /^[A-ZÀ-Ü\s]{5,}$/.test(l));
-
-      const validLines = [];
-      for (const line of lines) {
-        if (stopWords.some((word) => line.includes(word))) break;
-        validLines.push(line);
-      }
-
-      // Assume que a primeira linha é do pai e a(s) seguinte(s) da mãe
-      if (validLines.length >= 2) {
-        const nomeMae = validLines.slice(1).join(" ");
-        genitoraValue = nomeMae.replace(/^\bSILVA\b\s*/i, "").trim(); // remove alguns padrões como "SILVA" no início, se houver
-      } else if (validLines.length === 1) {
-        genitoraValue = validLines[0].trim();
-      }
-    }
-    elements.genitora.value = genitoraValue;
-
-    // Veículo
-    const placa = findValue(patterns.veiculoPlaca);
-    const cor = findValue(patterns.veiculoCor);
-    const modelo = findValue(patterns.veiculoModelo);
-    if (placa || cor || modelo) {
-      document.getElementById("veiculoCheck").checked = true;
-      document.getElementById("naoAplicaVeiculo").checked = false;
-      document.getElementById("veiculoFields").style.display = "block";
-      elements.veiculoPlaca.value = placa;
-      elements.veiculoCor.value = cor;
-      elements.veiculoModelo.value = modelo;
-    }
+    validateFormAndToggleActions();
   }
-
   function generateReportText() {
     const getVal = (elId) => elements[elId].value.trim() || "Não informado";
     const apelidoFinal = elements.naoAplicaApelido.checked

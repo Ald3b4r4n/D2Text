@@ -421,6 +421,15 @@
           </a>
         </div>
       </footer>
+      <div class="text-center mb-4">
+        <button
+          class="btn btn-info"
+          data-bs-toggle="modal"
+          data-bs-target="#tutorialModal"
+        >
+          📘 Como Usar
+        </button>
+      </div>
     </main>
 
     <div class="modal fade" id="correctionModal" tabindex="-1">
@@ -664,6 +673,78 @@
             class="btn-close btn-close-white me-2 m-auto"
             data-bs-dismiss="toast"
           ></button>
+        </div>
+      </div>
+    </div>
+    <div class="modal fade" id="tutorialModal" tabindex="-1">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-primary text-white">
+            <h5 class="modal-title">📘 Como Usar o Sistema</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <ol class="list-group list-group-numbered">
+              <li class="list-group-item">
+                Clique em <strong>"Tirar Foto"</strong> ou
+                <strong>"Galeria"</strong> para enviar o documento.
+              </li>
+              <li class="list-group-item">
+                Aguarde o processamento automático do texto.
+              </li>
+              <li class="list-group-item">
+                Revise os campos extraídos e corrija se necessário.
+              </li>
+              <li class="list-group-item">
+                Se o OCR falhar, cole o texto manualmente ou use a função nativa
+                do celular para copiar da imagem.
+              </li>
+              <li class="list-group-item">
+                Clique em <strong>"Copiar Dados"</strong> ou
+                <strong>"Enviar WhatsApp"</strong> para compartilhar.
+              </li>
+            </ol>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" data-bs-dismiss="modal">
+              Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal fade" id="ocrTimeoutModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-warning">
+            <h5 class="modal-title text-dark">
+              No momento o servidor da Ocr está lento ⚠️
+            </h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body text-dark">
+            <p>O servidor de OCR está demorando para responder.</p>
+            <ul>
+              <li>Você pode digitar os dados manualmente.</li>
+              <li>
+                Ou usar a função nativa do celular para copiar texto da imagem.
+              </li>
+            </ul>
+            <p>Se o problema persistir, tente novamente mais tarde.</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" data-bs-dismiss="modal">
+              Fechar
+            </button>
+          </div>
         </div>
       </div>
     </div>
