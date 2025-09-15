@@ -6,10 +6,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const MAX_FILE_SIZE_KB = 1024;
   const MAX_DIMENSION = 1200;
   const OCR_API_KEY = "K82112819888957";
-  const OCR_TIMEOUT = 10000;
-  const ocrTimeoutModal = new bootstrap.Modal(
-    document.getElementById("ocrTimeoutModal")
-  );
+  const OCR_TIMEOUT = 10000; // 10 segundos para timeout da OCR
 
   // =============================================
   // ESTADO DA APLICAÇÃO
@@ -38,9 +35,9 @@ document.addEventListener("DOMContentLoaded", function () {
     whatsappBtn: document.getElementById("whatsappBtn"),
     resetAntecedentes: document.getElementById("resetAntecedentes"),
     resetLocal: document.getElementById("resetLocal"),
-
     resetEquipe: document.getElementById("resetEquipe"),
     abordado: document.getElementById("abordado"),
+    naturalidade: document.getElementById("naturalidade"),
     genitora: document.getElementById("genitora"),
     apelido: document.getElementById("apelido"),
     cpf: document.getElementById("cpf"),
@@ -62,6 +59,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     correctionModal: new bootstrap.Modal(
       document.getElementById("correctionModal")
+    ),
+    ocrTimeoutModal: new bootstrap.Modal(
+      document.getElementById("ocrTimeoutModal")
     ),
     modalFieldName: document.getElementById("modalFieldName"),
     ocrTextContent: document.getElementById("ocrTextContent"),
@@ -384,21 +384,32 @@ document.addEventListener("DOMContentLoaded", function () {
     formData.append("OCREngine", "5");
 
     let timeoutId;
+    let isTimedOut = false;
 
     try {
-      // Inicia o timeout para mostrar o modal após 10 segundos
-      timeoutId = setTimeout(() => {
-        elements.ocrTimeoutModal.show();
-      }, 10000);
+      // Criar uma promise para o timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          isTimedOut = true;
+          elements.ocrTimeoutModal.show(); // Mostrar o modal de timeout
+          reject(new Error("OCR demorou muito tempo para responder"));
+        }, OCR_TIMEOUT);
+      });
 
-      const response = await fetch("https://api.ocr.space/parse/image", {
+      // Criar uma promise para a chamada da API
+      const fetchPromise = fetch("https://api.ocr.space/parse/image", {
         method: "POST",
         headers: { apikey: OCR_API_KEY },
         body: formData,
       });
 
-      // Se a resposta chegou a tempo, cancela o timeout
-      clearTimeout(timeoutId);
+      // Usar Promise.race para ver qual promise resolve primeiro
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+      // Se chegou aqui, a API respondeu antes do timeout
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) throw new Error(`Erro de rede: ${response.status}`);
       const data = await response.json();
@@ -408,7 +419,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
       return data.ParsedResults[0].ParsedText || "";
     } catch (error) {
-      clearTimeout(timeoutId); // Garante que o timeout não dispare depois do erro
+      // Se o erro não for de timeout, limpar o timeout
+      if (!isTimedOut && timeoutId) {
+        clearTimeout(timeoutId);
+      }
       throw error;
     }
   }
@@ -504,6 +518,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let emissao = "",
       validade = "",
       categoria = "";
+    let naturalidade = "";
 
     // Dados de veículo
     let modelo = "",
@@ -540,50 +555,104 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
 
-      // Nome da mãe (reconstrói nome quebrado e para quando muda de seção)
-      if (
-        linha.includes("FILIA") ||
-        linha.includes("FIL") ||
-        linha.includes("- FILAÇÃO") ||
-        linha.includes("FILIACAO") ||
-        linha.includes("FILIAÇÃO") ||
-        linha.includes("GENITORA") ||
-        linha.includes("MOTHER") ||
-        linha.includes("FLAÇÃO") ||
-        linha.includes("mae") ||
-        linha.includes("MAE") ||
-        linha.includes("mãe") ||
-        linha.includes("MÃE")
-      ) {
-        const nomes = [];
-        for (let j = 1; j <= 8; j++) {
-          const linhaSeguinte = linhas[i + j]?.trim();
-          if (!linhaSeguinte) continue;
-
-          // se a linha é claramente de outra seção, pare
-          if (stopWordsMae.some((w) => linhaSeguinte.includes(w))) break;
-
-          // ignorar linhas ruidosas: siglas curtas, com underscore, hífens soltos etc.
-          if (linhaSeguinte.length <= 2) continue;
-          if (/[*_]/.test(linhaSeguinte)) continue;
-
-          // aceita nomes em múltiplas linhas (inclusive pai em 1-2 linhas)
-          if (!/\d/.test(linhaSeguinte) && isAllCaps(linhaSeguinte)) {
-            nomes.push(normalizeSpaces(linhaSeguinte));
-            // Heurística: se já juntou 4 linhas de nomes, é suficiente
-            if (nomes.length >= 4) break;
+      // Naturalidade
+      if (!naturalidade) {
+        // Caso 1: linha com palavras-chave explícitas
+        if (
+          linha.includes("NATURALIDADE") ||
+          linha.includes("NATURAL DE") ||
+          linha.includes("LOCAL DE NASCIMENTO")
+        ) {
+          const prox = linhas[i + 1];
+          if (prox && prox.length > 2 && !/\d/.test(prox)) {
+            naturalidade = normalizeSpaces(prox);
           } else {
-            break;
+            const match = linha.match(
+              /(?:NATURALIDADE|LOCAL\s+DE\s+NASCIMENTO)[^\n:]*[:]*\s*([A-ZÀ-Ú\s\/-]+)/i
+            );
+            if (match && match[1]) naturalidade = normalizeSpaces(match[1]);
           }
         }
 
-        // Montagem: geralmente pai ocupa 1-2 linhas, mãe vem depois
-        if (nomes.length >= 3) {
-          // Se pai está em 2 linhas, a mãe começa da 3ª
-          mae = normalizeSpaces(nomes.slice(2).join(" "));
-        } else if (nomes.length >= 2) {
-          // pai 1 linha, mãe 2ª linha (ou 2 linhas do pai e faltou mãe)
-          mae = normalizeSpaces(nomes[1]);
+        // Caso 2: linha com "DATA, LOCAL E UF DE NASCIMENTO"
+        if (
+          linha.includes("DATA") &&
+          linha.includes("LOCAL") &&
+          linha.includes("UF") &&
+          linha.includes("NASC")
+        ) {
+          const prox = linhas[i + 1];
+          if (prox) {
+            const match = prox.match(
+              /(\d{2}\/\d{2}\/\d{4}),\s*([A-ZÀ-Ú\s]+),\s*([A-Z]{2})/i
+            );
+            if (match && match[2] && match[3]) {
+              naturalidade = normalizeSpaces(match[2] + ", " + match[3]);
+            }
+          }
+        }
+      }
+
+      // NOVA LÓGICA PARA EXTRAIR NOME DA MÃE
+      // Verifica se a linha atual contém indicação de filiação
+      const isFiliationLine = (line) => {
+        return /[-\s]*([C\s]*)?(FILIA[CÇ]ÃO|FILIA[CÇ]?A?O|FILA[CÇ]ÃO|FIL[IAÇÃ]*|GENITORA|MOTHER|MAE|MÃE)/i.test(
+          line
+        );
+      };
+
+      if (isFiliationLine(linha) && !mae) {
+        // Coleta linhas próximas que podem conter nomes
+        const possibleNames = [];
+        let j = i + 1;
+        let maxLines = 10; // Procura mais linhas para garantir
+
+        while (j < linhas.length && maxLines > 0) {
+          const currentLine = linhas[j].trim();
+
+          // Verifica se chegou ao fim da seção de filiação
+          if (
+            currentLine.length <= 2 ||
+            /[*_]/.test(currentLine) ||
+            /\d{2,}/.test(currentLine) || // Evita capturar linhas com muitos números
+            stopWordsMae.some((w) => currentLine.includes(w))
+          ) {
+            break;
+          }
+
+          // Verifica se a linha parece um nome válido
+          if (
+            isAllCaps(currentLine) &&
+            !currentLine.includes("FILIAÇÃO") &&
+            currentLine.length > 3 &&
+            currentLine.split(/\s+/).length >= 2
+          ) {
+            possibleNames.push(normalizeSpaces(currentLine));
+          }
+
+          j++;
+          maxLines--;
+        }
+
+        // Determina o nome da mãe baseado nos nomes encontrados
+        if (possibleNames.length >= 2) {
+          // Geralmente o pai vem primeiro, a mãe depois
+          mae = possibleNames[1]; // Segunda linha como mãe
+
+          // Se tiver mais de 2 nomes, pode ser que a mãe seja a combinação de linhas adicionais
+          if (possibleNames.length > 2) {
+            // Verifica se a 3ª linha parece continuação do nome da mãe
+            // (geralmente não tem o mesmo início que o nome do pai)
+            const paiParts = possibleNames[0].split(/\s+/);
+            const potencialMaeParts = possibleNames[2].split(/\s+/);
+
+            if (paiParts[0] !== potencialMaeParts[0]) {
+              // Se o primeiro nome for diferente, provavelmente é continuação do nome da mãe
+              mae = normalizeSpaces(possibleNames[1] + " " + possibleNames[2]);
+            }
+          }
+        } else if (possibleNames.length === 1) {
+          mae = possibleNames[0]; // Se só encontrou um nome, assume que é da mãe
         }
       }
 
@@ -761,6 +830,9 @@ document.addEventListener("DOMContentLoaded", function () {
         /(?:NOME(?:\s+E\s+SOBRENOME)?)[^\n]*\n(?:.*\n)?([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,}){1,})/i,
         /2\s*e\s*1\s*NOME\s*E\s*SOBRENOME\s*\n(?:.*\n)?([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,})+)/i,
       ],
+      naturalidade: [
+        /(?:NATURALIDADE|LOCAL\s+DE\s+NASCIMENTO)[^\n]*[\n:]*\s*([A-ZÀ-Ú\s\/-]+)/i,
+      ],
       dn: [/(?:DATA\s+NASC(?:IMENTO)?)[\s:.-]*([0-9]{2}\/[0-9]{2}\/[0-9]{4})/i],
       cpf: [
         /CPF\s*[:\n-]*\s*(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2})/i,
@@ -775,13 +847,20 @@ document.addEventListener("DOMContentLoaded", function () {
         /MARCA\s*\/\s*MODELO\s*\/\s*VERS[AÃ]O\s+([^\n]+)/i,
         /MARCA.*MODELO.*VERS.*\n([^\n]+)/i,
       ],
-      maeBloco: [/FILIA(?:C|Ç)ÃO[\s:.-]*([\s\S]{10,200})/i],
+      maeBloco: [
+        /(?:[C-\s]*FILIA[CÇ]ÃO|GENITORA|MOTHER|MAE|MÃE)[\s:.-]*([\s\S]{10,200})/i,
+      ],
     };
 
     // Completa nome se vazio
     if (!nome) {
       const nomeRx = findValue(patterns.abordado);
       if (nomeRx && nomeRx.split(" ").length >= 2) nome = UPPER(nomeRx);
+    }
+
+    // Completa naturalidade se vazio
+    if (!naturalidade) {
+      naturalidade = UPPER(findValue(patterns.naturalidade));
     }
 
     // Completa DN se vazio
@@ -801,7 +880,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    // Completa mãe se vazio com bloco de FILIAÇÃO
+    // Completa mãe se vazio com bloco de FILIAÇÃO (usando regex melhorado)
     if (!mae) {
       const bloco = findValue(patterns.maeBloco);
       if (bloco) {
@@ -824,6 +903,25 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
+    // Se ainda não encontrou o nome da mãe, tenta uma busca mais ampla no texto
+    if (!mae) {
+      // Busca por padrões específicos como "MARCIA HELENA" seguido por outros nomes
+      const maeRegex =
+        /(?:FILIAÇÃO|GENITORA|MAE|MÃE)[\s\S]*?([A-ZÀ-Ü]{2,}[\s\S]{5,80}?)(?:(?:\n|$)|(?:\d|\b(?:CPF|RG|NACIONA|ESTADO|ASSIN|LOCAL|DATA|CAT|N°)))/i;
+      const match = text.match(maeRegex);
+
+      if (match && match[1]) {
+        const potencialMae = match[1].trim();
+        // Verifica se o texto parece um nome
+        if (
+          potencialMae.split(/\s+/).length >= 2 &&
+          !/^\d+$/.test(potencialMae)
+        ) {
+          mae = normalizeSpaces(UPPER(potencialMae));
+        }
+      }
+    }
+
     // Completa veículo
     if (!placa)
       placa = UPPER(findValue(patterns.veiculoPlaca)).replace(" ", "");
@@ -836,6 +934,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Preenche os campos no DOM
     elements.abordado.value = nome || "";
+    elements.naturalidade.value = naturalidade || "";
     elements.genitora.value = mae || "";
     elements.cpf.value = cpf || "";
     elements.dn.value = dn || "";
@@ -882,6 +981,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let report =
       `🚨 *ABORDAGEM POLICIAL* 🚨\n\n` +
       `*Abordado:* ${getVal("abordado")}\n` +
+      `*Naturalidade:* ${getVal("naturalidade")}\n` +
       `*Genitora:* ${getVal("genitora")}\n` +
       `*Apelido:* ${apelidoFinal}\n` +
       `*CPF:* ${getVal("cpf")}\n` +
@@ -971,6 +1071,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let hintHtml = "";
     switch (fieldId) {
+      case "naturalidade":
+        hintHtml = `<ul class="mb-0 mt-2 small">
+          <li>Para extrair a naturalidade, use <code>Início: "NATURALIDADE"</code> ou <code>Início: "NATURAL DE"</code>.</li>
+          <li>Se estiver em um documento de identidade, pode aparecer após "LOCAL DE NASC".</li>
+          <li>Use <code>Fim: "DATA"</code> ou <code>Fim: "NASCIMENTO"</code> para limitar a extração.</li>
+        </ul>`;
+        break;
+      case "genitora":
+        hintHtml = `<ul class="mb-0 mt-2 small">
+          <li>Para extrair o nome da mãe, tente localizar <code>Início: "FILIAÇÃO"</code> ou <code>Início: "MARCIA"</code> (por exemplo).</li>
+          <li>Geralmente o nome da mãe aparece após o nome do pai.</li>
+          <li>Em alguns documentos pode aparecer como "MARCIA HELENA LUIZ DE LIMA PEREIRA".</li>
+        </ul>`;
+        break;
       case "dn":
         hintHtml = `<ul class="mb-0 mt-2 small">
           <li>Para extrair uma data, use <code>Início: "NASCIMENTO"</code> e <code>Fim: "ASSINATURA"</code>.</li>
